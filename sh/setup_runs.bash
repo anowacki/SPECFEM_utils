@@ -45,6 +45,7 @@ NPROC=5
 CHUNK_LON=0.0
 CHUNK_LAT=0.0
 CHUNK_ROT=0.0
+CHUNK_WIDTH=90.0
 RUNTIME=30.0
 WALLTIME=24:00:00
 unset MERGED
@@ -111,7 +112,8 @@ check_file_exists () {
 # If a Par_file is defined, then warn that the option will be ignored
 # Accepts one argument: name of option being defined
 check_Par_file () {
-	[ "$PAR_FILE" ] && echo "Warning: Par_file is being used, so ignoring option $1"
+	[ "$PAR_FILE" ] && {
+		echo "Warning: Par_file is being used, so ignoring option $1"; return 1; }
 }
 # Get a variable from a Par_file
 get_Par_file_var () {
@@ -120,6 +122,10 @@ get_Par_file_var () {
 		exit 1
 	fi
 	grep -e "^\s*$2\s*=" "$1" | awk '{print $3}'
+}
+# Cat the current SPECFEM3D_GLOBE version's Par_file
+cat_Par_file () {
+	git show HEAD:DATA/Par_file || { echo "cat_Par_file: Cannot cat DATA/Par_file" >&2; return 1; }
 }
 
 # Get arguments
@@ -159,7 +165,7 @@ if ! [ -d ../DATA -a \
        -d ../src/meshfem3D -a \
        -d ../src/shared ]; then
 	{ echo "`basename $0`: Error: Can't find the necessary SPECFEM3D_GLOBE files"
-	  echo -n "Run this script one level down from a SPECFEM3D_GLOBE "
+	  printf "Run this script one level down from a SPECFEM3D_GLOBE "
 	  echo "installation (e.g., in a subdirectory called 'RUNS')"; } > /dev/stderr
 	exit 2
 fi
@@ -197,12 +203,11 @@ nprocs=$((NCHUNKS * NPROC_XI * NPROC_ETA))
 # some strings which depend on this accordingly
 host=`hostname | awk 'BEGIN {h="unknown"}
 						/eslogin/         {h = "archer"}
-						/hector/ || /nid/ {h = "hector"}
 						/polaris/         {h = "polaris"}
 						/typhon/ || /t-0/ {h = "typhon"}
 						/bigblue/         {h = "bluecrystal"}
 						END {print h}'`
-if [[ $host == hector || $host == archer ]]; then
+if [ "$host" = "archer" ]; then
 	# On ARCHER, we use Cray's aprun command
 	runmesher="aprun -n \$numnodes -N \$N \$PWD/bin/xmeshfem3D"
 	runsolver="aprun -n \$numnodes -N \$N \$PWD/bin/xspecfem3D"
@@ -212,14 +217,8 @@ if [[ $host == hector || $host == archer ]]; then
 	PBS_mail_line="#PBS -m ae
 #PBS -M $email
 #PBS -A ${BUDGET}"
-	if [[ $host == hector ]]; then
-		procs_per_node=$ppn_hector
-		PBS_procs_line="#PBS -l mppwidth=$nprocs
-#PBS -l mppnppn=$procs_per_node"
-	else
-		procs_per_node=$ppn_archer
-		PBS_procs_line="#PBS -l select=$(( (nprocs + procs_per_node - 1)/procs_per_node ))"
-	fi
+	procs_per_node=$ppn_archer
+	PBS_procs_line="#PBS -l select=$(( (nprocs + procs_per_node - 1)/procs_per_node ))"
 else
 	runmesher="mpiexec -np \$numnodes -machinefile \$confile \$PWD/bin/xmeshfem3D"
 	runsolver="mpiexec -np \$numnodes -machinefile \$confile \$PWD/bin/xspecfem3D"
@@ -293,11 +292,11 @@ else
 	d=5 # degrees spacing
 	for ((lon=-180; lon<180; lon+=$d)); do
 		for ((lat=$[90-$d]; lat>=-$[90-$d]; lat-=$d)); do
-			printf "SEM.%03d_%03d AN %6.1f %6.1f 0.0 0.0\n" $lon $lat $lat $lon
+			printf "S%03d_%03d AN %6.1f %6.1f 0.0 0.0\n" $lon $lat $lat $lon
 		done
 	done > "$NAME"/DATA/STATIONS
-	printf "SEM.%03d_%03d AN %6.1f %6.1f 0.0 0.0\n" 0  90  90 0 >> "$NAME"/DATA/STATIONS
-	printf "SEM.%03d_%03d AN %6.1f %6.1f 0.0 0.0\n" 0 -90 -90 0 >> "$NAME"/DATA/STATIONS
+	printf "S%03d_%03d AN %6.1f %6.1f 0.0 0.0\n" 0  90  90 0 >> "$NAME"/DATA/STATIONS
+	printf "S%03d_%03d AN %6.1f %6.1f 0.0 0.0\n" 0 -90 -90 0 >> "$NAME"/DATA/STATIONS
 fi
 
 # Use absorbing conditions unless using the whole Earth
@@ -310,10 +309,10 @@ else
 	# Make default Par_file by replacing some variables
 	### NOTE: This defines a 'unique' directory for the meshfiles if we're running ###
 	### on Typhon or another machine that's not Hector.  Be careful.               ###
-	awk '
+	{ cat_Par_file || exit 1; } | awk '
 	function rep(name, var,   r) {
 		r = "^ *"name" *="
-		if ($0 ~ r) {$3 = var; printf("%-32s= %s\n", $1, $3); return 1}
+		if ($0 ~ r) {printf("%-32s= %s\n", $1, var); return 1}
 		return 0
 	}
 	{
@@ -322,13 +321,15 @@ else
 		if (rep("NEX_ETA", "'"$NEX_ETA"'")) next
 		if (rep("NPROC_XI", "'"$NPROC_XI"'")) next
 		if (rep("NPROC_ETA", "'"$NPROC_ETA"'")) next
+		if (rep("ANGULAR_WIDTH_XI_IN_DEGREES", "'"$CHUNK_WIDTH"'"))
+		if (rep("ANGULAR_WIDTH_ETA_IN_DEGREES", "'"$CHUNK_WIDTH"'"))
 		if (rep("MODEL", "'"$MODEL"'")) next
 		if (rep("ABSORBING_CONDITIONS", "'"$ABSORBING_CONDITIONS"'")) next
 		if (rep("RECORD_LENGTH_IN_MINUTES", "'"$RECORD_LENGTH"'")) next
 		if (rep("LOCAL_PATH", "'"$LOCAL_PATH"'")) next
 		print
 	}
-	' ../DATA/Par_file > "$NAME"/DATA/Par_file
+	' > "$NAME"/DATA/Par_file
 fi
 
 #################################################################################
