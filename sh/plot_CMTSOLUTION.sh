@@ -6,7 +6,9 @@ usage() {
 	exit 1
 }
 
-if [ $# -eq 0 ]; then
+if [ $# -ne 1 ]; then
+	usage
+elif [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
 	usage
 fi
 
@@ -29,7 +31,7 @@ awk 'NR==1 {printf("%s %s %s ", $9,$8,$10)}
 		gsub("E+"," "); printf("%s ",$2); expn=$3; expn=25 # To keep plot about same size
 	}
 	END {print expn,"0 0"}' $INFILE |
-	psmeca -J -R -Sm2c -T0 -O >> $FIG
+	psmeca -J -R -Sm1c -T0 -O >> $FIG
 
 gv $FIG 2>/dev/null
 
