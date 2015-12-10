@@ -13,15 +13,21 @@ usage() {
 	exit 1
 }
 
+[ $# -ne 0 ] && usage
+
+
 ####
 # Get input and check format
 ####
-TEMP=/tmp/ndk2CMTSOLUTION.$$.$RANDOM.tmp
+TEMP=$(mktemp /tmp/ndk2CMTSOLUTION.shXXXXXX)
+trap 'rm -f "$TEMP"' EXIT
+
 cat /dev/stdin > $TEMP
 if [ $(wc -l < $TEMP 2> /dev/null) -ne 5 ]; then
 	echo "Input must be GlobalCMT project .ndk description of one earthquake (5 lines)" > /dev/stderr
 	usage
 fi
+
 # Output in CMTSOLUTION format
 awk '
 	NR == 1 {
@@ -75,9 +81,3 @@ awk '
 
 	}
 	' $TEMP 
-
-
-# Clear away temp file
-/bin/rm -f $TEMP
-
-exit 0
