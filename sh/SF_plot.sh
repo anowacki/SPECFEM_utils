@@ -22,16 +22,29 @@ trap 'rm -f "$FIG"' EXIT
 # Plot size
 size=12
 
+# Get some information
+read NCHUNKS lat lon rest <<< $(awk '
+	/^ *NCHUNKS *=/ {print $3}
+	/latitude:/ || /longitude:/ {print $2}' DATA/Par_file DATA/CMTSOLUTION)
+
 # Get projection
-J=$(awk '/latitude:/{lat=$2} /longitude:/{lon=$2} END{print "G" lon "/" lat}
-' DATA/CMTSOLUTION)/${size}c
+if [ $NCHUNKS -lt 6 ]; then
+	case $NCHUNKS in
+		1) horiz=90;;
+		2|3) horiz=150;;
+		4|5) echo "$(basename $0): NCHUNKS cannot be 4 or 5" >&2; exit 1;;
+	esac
+	J=A$lon/$lat/$horiz/${size}c
+else
+	J=Q$lon/$lat/${size}c
+fi
 
 # Plot coastlines
 pscoast -J$J -Rd -Dc -Slightblue -Glightgreen -Wblack -K -P > "$FIG"
 
 # Plot stations
 awk '{print $4,$3}' DATA/STATIONS |
-psxy -J -R -Si0.2c -Gblue -O -K >> "$FIG"
+	psxy -J -R -Si0.2c -Gblue -O -K >> "$FIG"
 
 # Plot focal mechanisms
 awk 'NR==1 {printf("%s %s %s ", $9,$8,$10)}
@@ -42,6 +55,8 @@ awk 'NR==1 {printf("%s %s %s ", $9,$8,$10)}
 	psmeca -J -R -Sm0.2c -T0 -O -K >> "$FIG"
 
 # Plot chunk edges, if applicable
-"$(dirname "$(type -p "$0")")/chunk_corners.sh" -l | psxy -J -R -O -W3p,red -Bnsew >> "$FIG"
+[ $NCHUNKS -lt 6 ] &&
+	"$(dirname "$(type -p "$0")")/chunk_corners.sh" -l |
+		psxy -J -R -O -W3p,red -Bnsew >> "$FIG"
 
 gv "$FIG"
