@@ -3,17 +3,30 @@
 
 usage() {
 	cat <<-END >&2
-	Usage: $(basename $0)
-	Plot the setup of the current run, as per the files in the DATA directory
+	Usage: $(basename $0) [-c CMTSOLUTION] [-p Par_file] [-s STATIONS]
+	Plot the setup of the current run, as per the files in the DATA directory.
+	Alternatively, supply files using the -c, -s and -p options to plot
+	different files.
 	END
 	exit 1
 }
 
-[ "$1" ] && usage
+# Defaults
+CMTSOLUTION="DATA/CMTSOLUTION"
+Par_file="DATA/Par_file"
+STATION="DATA/STATIONS"
 
-[ -d "DATA" ] || { echo "Cannot find DATA directory" >&2; exit 1; }
-for f in CMTSOLUTION STATIONS Par_file; do
-	[ -f "DATA/$f" ] || { echo "Cannot find file DATA/$f" >&2; exit 1; }
+while [ "$1" ]; do
+	case "$1" in
+		-c) CMTSOLUTION="$2"; shift 2;;
+		-p) Par_file="$2"; shift 2;;
+		-s) STATIONS="$2"; shift 2;;
+		*) usage;;
+	esac
+done
+
+for f in "$CMTSOLUTION" "$STATIONS" "$Par_file"; do
+	[ -f "$f" ] || { echo "Cannot find file $f" >&2; exit 1; }
 done
 
 FIG=$(mktemp /tmp/SF_plot.psXXXXXX)
@@ -25,7 +38,7 @@ size=12
 # Get some information
 read NCHUNKS lat lon rest <<< $(awk '
 	/^ *NCHUNKS *=/ {print $3}
-	/latitude:/ || /longitude:/ {print $2}' DATA/Par_file DATA/CMTSOLUTION)
+	/latitude:/ || /longitude:/ {print $2}' "$Par_file" "$CMTSOLUTION")
 
 # Get projection
 if [ $NCHUNKS -lt 6 ]; then
@@ -43,20 +56,18 @@ fi
 pscoast -J$J -Rd -Dc -Slightblue -Glightgreen -Wblack -K -P > "$FIG"
 
 # Plot stations
-awk '{print $4,$3}' DATA/STATIONS |
+awk '{print $4,$3}' "$STATIONS" |
 	psxy -J -R -Si0.2c -Gblue -O -K >> "$FIG"
 
 # Plot focal mechanisms
-awk 'NR==1 {printf("%s %s %s ", $9,$8,$10)}
-	NR>=8 && NR<=14 {
-		gsub("E+"," "); printf("%s ",$2);  expn=18 # To keep plot about same size
-	}
-	END {print expn,"0 0"}' DATA/CMTSOLUTION |
-	psmeca -J -R -Sm0.2c -T0 -O -K >> "$FIG"
+awk 'NR==1 {printf("%s %s %s ", $9, $8, $10)}
+	NR>=8 && NR<=14 {printf("%s ", $2)}
+	END {print 0,0,0}' "$CMTSOLUTION" |
+	psmeca -J -R -Sm0.8c -M -T0 -O -K >> "$FIG"
 
 # Plot chunk edges, if applicable
 [ $NCHUNKS -lt 6 ] &&
-	"$(dirname "$(type -p "$0")")/chunk_corners.sh" -l |
+	"$(dirname "$(type -p "$0")")/chunk_corners.sh" -l "$Par_file" |
 		psxy -J -R -O -W3p,red -Bnsew >> "$FIG"
 
 gv "$FIG"
