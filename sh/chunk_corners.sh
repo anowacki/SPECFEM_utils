@@ -16,13 +16,13 @@ usage() {
 while [ "$1" ]; do
 	case "$1" in
 		-l) lines=1; shift;;
-		*) [ $# -eq 1 ] && [ -f "$1" ] && [ "$(basename "$1")" = "Par_file" ] || usage
+		*) [ $# -eq 1 ] && [ -f "$1" ] || usage
 		   break;;
 	esac
 done
 
 file="${1:-DATA/Par_file}"
-[ -f "$file" ] || { echo "Cannot find Par_file \"$file\"" >&2; exit 1; }
+[ -f "$file" ] || { echo "$(basename "$0"): Cannot find Par_file \"$file\"" >&2; exit 1; }
 
 [ -f "$(dirname $(type -p "$0"))/funcs.awk" ] || { echo "Cannot find \"$(dirname "$0")/funcs.awk\"" >&2; exit 1; }
 
