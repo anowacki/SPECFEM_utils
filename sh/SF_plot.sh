@@ -14,7 +14,7 @@ usage() {
 # Defaults
 CMTSOLUTION="DATA/CMTSOLUTION"
 Par_file="DATA/Par_file"
-STATION="DATA/STATIONS"
+STATIONS="DATA/STATIONS"
 
 while [ "$1" ]; do
 	case "$1" in
@@ -26,7 +26,7 @@ while [ "$1" ]; do
 done
 
 for f in "$CMTSOLUTION" "$STATIONS" "$Par_file"; do
-	[ -f "$f" ] || { echo "Cannot find file $f" >&2; exit 1; }
+	[ -f "$f" ] || { echo "Cannot find file \"$f\"" >&2; exit 1; }
 done
 
 FIG=$(mktemp /tmp/SF_plot.psXXXXXX)
