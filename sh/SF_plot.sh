@@ -5,17 +5,25 @@ usage() {
 	cat <<-END >&2
 	Usage: $(basename $0) [-c CMTSOLUTION] [-p Par_file] [-s STATIONS] [-d directory]
 	Plot the setup of the current run, as per the files in the DATA directory.
-	Alternatively, supply files using the -c, -s and -p options to plot
-	different files; or use the -d option, which searches for the files in a different
-	directory to DATA.
+	Options:
+	   -b      : Batch mode: do not show plot with gv.
+	   -c file : Specify CMTSOLUTION file to use [DATA/CMTSOLUTION]
+	   -d dir  : Specify directory in which to file files you have not specified
+	             with -c, -p or -s [DATA]
+	   -o file : Save PostScript plot to <file>.  If the extension is `pdf', convert
+	             to PDF first.
+	   -p file : Specify Par_file to use [DATA/Par_file]
+	   -s file : Specift STATIONS file to use [DATA/STATIONS]
 	END
 	exit 1
 }
 
 while [ "$1" ]; do
 	case "$1" in
+		-b) batch=1; shift;;
 		-c) CMTSOLUTION="$2"; shift 2;;
 		-d) DIR="$2"; shift 2;;
+		-o) ofile="$2"; shift 2;;
 		-p) Par_file="$2"; shift 2;;
 		-s) STATIONS="$2"; shift 2;;
 		*) usage;;
@@ -73,4 +81,9 @@ awk 'NR==1 {printf("%s %s %s ", $9, $8, $10)}
 	"$(dirname "$(type -p "$0")")/chunk_corners.sh" -l "$Par_file" |
 		psxy -J -R -O -W3p,red -Bnsew >> "$FIG"
 
-gv "$FIG"
+# Display, save
+[ -z "$batch" ] && gv "$FIG"
+if [ "$ofile" ]; then
+	[ -d "$(dirname "$ofile")" ] || { echo "Output file directory does not exist" >&2; exit 1; }
+	[ "${ofile: -4}" = ".pdf" ] && ps2pdf_crop "$FIG" "$ofile" || mv "$FIG" "$ofile"
+fi
