@@ -3,30 +3,33 @@
 
 usage() {
 	cat <<-END >&2
-	Usage: $(basename $0) [-c CMTSOLUTION] [-p Par_file] [-s STATIONS]
+	Usage: $(basename $0) [-c CMTSOLUTION] [-p Par_file] [-s STATIONS] [-d directory]
 	Plot the setup of the current run, as per the files in the DATA directory.
 	Alternatively, supply files using the -c, -s and -p options to plot
-	different files.
+	different files; or use the -d option, which searches for the files in a different
+	directory to DATA.
 	END
 	exit 1
 }
 
-# Defaults
-CMTSOLUTION="DATA/CMTSOLUTION"
-Par_file="DATA/Par_file"
-STATIONS="DATA/STATIONS"
-
 while [ "$1" ]; do
 	case "$1" in
 		-c) CMTSOLUTION="$2"; shift 2;;
+		-d) DIR="$2"; shift 2;;
 		-p) Par_file="$2"; shift 2;;
 		-s) STATIONS="$2"; shift 2;;
 		*) usage;;
 	esac
 done
 
+# Default names and directories overridden if chosen on command line
+DIR="${DIR:-DATA}"
+CMTSOLUTION="${CMTSOLUTION:-${DIR}/CMTSOLUTION}"
+Par_file="${Par_file:-${DIR}/Par_file}"
+STATIONS="${STATIONS:-${DIR}/STATIONS}"
+
 for f in "$CMTSOLUTION" "$STATIONS" "$Par_file"; do
-	[ -f "$f" ] || { echo "Cannot find file \"$f\"" >&2; exit 1; }
+	[ -r "$f" ] || { echo "Cannot find file \"$f\"" >&2; exit 1; }
 done
 
 FIG=$(mktemp /tmp/SF_plot.psXXXXXX)
