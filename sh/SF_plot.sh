@@ -10,7 +10,7 @@ usage() {
 	   -c file : Specify CMTSOLUTION file to use [DATA/CMTSOLUTION]
 	   -d dir  : Specify directory in which to file files you have not specified
 	             with -c, -p or -s [DATA]
-	   -o file : Save PostScript plot to <file>.  If the extension is `pdf', convert
+	   -o file : Save PostScript plot to <file>.  If the extension is \`pdf', convert
 	             to PDF first.
 	   -p file : Specify Par_file to use [DATA/Par_file]
 	   -s file : Specift STATIONS file to use [DATA/STATIONS]
