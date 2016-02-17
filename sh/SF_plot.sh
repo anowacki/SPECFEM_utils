@@ -47,9 +47,13 @@ trap 'rm -f "$FIG"' EXIT
 size=12
 
 # Get some information
-read NCHUNKS lat lon rest <<< $(awk '
-	/^ *NCHUNKS *=/ {print $3}
-	/latitude:/ || /longitude:/ {print $2}' "$Par_file" "$CMTSOLUTION")
+read NCHUNKS lat lon dep rest <<< $(awk '
+	/^ *NCHUNKS *=/ {n = $3}
+	/latitude:/ {lat = $2}
+	/longitude:/ {lon = $2}
+	/depth:/ {dep = $2}
+	END {print n, lat, lon, dep}' "$Par_file" "$CMTSOLUTION")
+	echo "(lon, lat) = ($lon, $lat)"
 
 # Get projection
 if [ $NCHUNKS -lt 6 ]; then
@@ -71,7 +75,8 @@ awk '{print $4,$3}' "$STATIONS" |
 	psxy -J -R -Si0.2c -Gblue -O -K >> "$FIG"
 
 # Plot focal mechanisms
-awk 'NR==1 {printf("%s %s %s ", $9, $8, $10)}
+awk -v lon=$lon -v lat=$lat -v dep=$dep '
+	BEGIN {printf("%f %f %f ", lon, lat, dep)}
 	NR>=8 && NR<=14 {printf("%s ", $2)}
 	END {print 0,0,0}' "$CMTSOLUTION" |
 	psmeca -J -R -Sm0.8c -M -T0 -O -K >> "$FIG"
