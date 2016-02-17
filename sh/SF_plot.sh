@@ -53,7 +53,6 @@ read NCHUNKS lat lon dep rest <<< $(awk '
 	/longitude:/ {lon = $2}
 	/depth:/ {dep = $2}
 	END {print n, lat, lon, dep}' "$Par_file" "$CMTSOLUTION")
-	echo "(lon, lat) = ($lon, $lat)"
 
 # Get projection
 if [ $NCHUNKS -lt 6 ]; then
