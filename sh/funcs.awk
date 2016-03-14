@@ -108,6 +108,17 @@ function cartdist(x1, y1, z1, x2, y2, z2) {
 ##########
 # Spherical geometry
 ##########
+# Return the azimuth from one geographic point on the sphere to another (all degrees)
+function azimuth(lon1, lat1, lon2, lat2,   rlon1, rlat1, rlon2, rlat2, a) {
+	rlon1 = torad(lon1)
+	rlat1 = torad(lat1)
+	rlon2 = torad(lon2)
+	rlat2 = torad(lat2)
+	a = todeg(atan2(sin(rlon2-rlon1)*cos(rlat2), \
+    		cos(rlat1)*sin(rlat2) - sin(rlat1)*cos(rlat2)*cos(rlon2-rlon1)))
+	return a < 0 ? a + 360 : a
+}
+
 # Return the great circle distance between two geographic points on a sphere (all degrees)
 function delta(lon1, lat1, lon2, lat2,   rlon1, rlat1, rlon2, rlat2) {
 	rlon1 = torad(lon1)
