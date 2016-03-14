@@ -121,6 +121,34 @@ function delta(lon1, lat1, lon2, lat2,   rlon1, rlat1, rlon2, rlat2) {
                  sin(rlat1)*sin(rlat2) + cos(rlat1)*cos(rlat2)*cos(rlon2-rlon1)))
 }
 
+# Fill in the vector a with the lon and lat of a point d degrees away from that point
+# along an azimuth of a (all degrees)
+function step(lon, lat, az, d, a,   lon1, lat1, raz, rd, lon2, lat2) {
+	lon1 = torad(lon)
+	lat1 = torad(lat)
+	raz = torad(az)
+	rd = torad(d)
+    lat2 = asin(sin(lat1)*cos(rd) + cos(lat1)*sin(rd)*cos(raz))
+    lon2 = lon1 + atan2(sin(raz)*sin(rd)*cos(lat1), cos(rd) - sin(lat1)*sin(lat2))
+	a[1] = todeg(lon2)
+	a[2] = todeg(lat2)
+	return
+}
+
+# Spherical mean of a set of longitudes and latitudes, which are arrays of length n,
+# and which are in degrees.
+function spherical_mean(lon, lat, n, a,   i, X, Y, Z, v) {
+	for (i=1; i<=n; i++) {
+		geog2cart(lon[i], lat[i], 1, v)
+		X += v[1]
+		Y += v[2]
+		Z += v[3]
+	}
+	cart2geog(X/n, Y/n, Z/n, v)
+	a[1] = v[1]
+	a[2] = v[2]
+	return
+}
 
 ##########
 # Vectors
