@@ -255,7 +255,7 @@ mkdir -p "$NAME"/OUTPUT_FILES \
 		"$NAME"/bin \
 		"$NAME"/DATA
 [ "${LOCAL_PATH:0:2}" = "./" ] && mkdir -p "$NAME"/"$LOCAL_PATH"
-cd "$NAME"/DATA && (
+(cd "$NAME"/DATA &&
 for file in ../../../DATA/*; do
 	[ -d "$file" ] && ln -s "$file"
 done
