@@ -63,7 +63,7 @@ if [ $NCHUNKS -lt 6 ]; then
 	esac
 	J=A$lon/$lat/$horiz/${size}c
 else
-	J=Q$lon/$lat/${size}c
+	J=Q$lon/${size}c
 fi
 
 # Plot coastlines
