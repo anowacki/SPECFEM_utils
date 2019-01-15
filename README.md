@@ -9,7 +9,17 @@ About
 -----
 
 This repo contains scripts for running [`SPECFEM3D_GLOBE`](https://github.com/geodynamics/specfem3d_globe)
-on a few different HPC machines.  It automatically works out which version of `SPECFEM3D_GLOBE` you're using, and one what machine, and creates job scripts and Par_files accordingly.
+on a few different HPC machines.  It automatically works out which version of `SPECFEM3D_GLOBE` you're using, and on what machine, and creates job scripts and Par_files accordingly.
+
+I has mostly been used on [ARCHER](https://archer.ac.uk).
+
+
+Default values
+--------------
+
+The scripts allow for the setting of default values for some things like your
+email address and budget code on the ARCHER machine.  Set these in the `defaults`
+file.
 
 
 Licence

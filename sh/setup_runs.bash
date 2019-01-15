@@ -24,12 +24,6 @@
 # Andy Nowacki, University of Leeds
 
 ################################################################################
-# CHANGE THESE VARIABLES
-BUDGET=n03-lds2                        # Budget to charge AUs to on ARCHER
-email=a.nowacki@leeds.ac.uk            # Email address
-################################################################################
-
-################################################################################
 # MACHINE-SPECIFIC VARIABLES
 ppn_hector=32 ppn_archer=24 ppn_typhon=48  ppn_bcp2=16 # Processors per node
 ppn[archer]=24
@@ -37,7 +31,7 @@ ppn[typhon]=48
 ################################################################################
 
 ################################################################################
-# SCRIPT DEFAULTS
+# RUN DEFAULTS
 MODEL=1D_isotropic_prem
 NCHUNKS=1
 NEX=240
@@ -49,30 +43,49 @@ CHUNK_WIDTH=90.0
 RUNTIME=30.0
 WALLTIME=24:00:00
 unset MERGED
+OCEANS=".false."
+ELLIPTICITY=".false."
+TOPOGRAPHY=".false."
+GRAVITY=".false."
+ROTATION=".false."
+ATTENUATION=".true."
+# SCRIPT DEFAULTS
+JOB_SCRIPT="go_mesher_solver_pbs.bash"
 ################################################################################
 
 # Print out usage and exit with error
 usage () {
-	{
-		echo "`basename $0`: Create a new directory for a SPECFEMF3D_GLOBE run"
-		echo "Usage: `basename $0` (options) [name]"
-		echo "Pre-defined input files:"
-		echo "   -Par [Par_file] : Use specified Par_file"
-		echo "   -CMT [CMTSOLUTION file] : Use specified CMTSOLUTION file"
-		echo "   -STA [STATIONS] : Use specified STATIONS file"
-		echo "Options [defaults]:"
-		echo "   -c [NCHUNKS]  : Number of chunks [$NCHUNKS]"
-		echo "   -chunk [lon lat angle] : Set longitude, latitude and angle clockwise"
-		echo "                   away from east of first chunk [$CHUNK_LON $CHUNK_LAT $CHUNK_ROT]"
-		echo "   -e [NEX]      : Number of spectral elements per side [$NEX]"
-		echo "   -m            : Make run for merged mesher and solver [separate]"
-		echo "   -mod [model]  : Earth model [$MODEL]"
-		echo "   -n [NPROC]    : Number of processes per side [$NPROC]"
-		echo "   -N [jobname]  : Name of job in queue [same as 'name']"
-		echo "   -path [dir]   : Location of MPI mesh files [chosen according to machine]"
-		echo "   -t [mins]     : Simulation time in minutes [$RUNTIME]"
-		echo "   -w [hh:mm:ss] : Walltime [$WALLTIME]"
-	} >&2
+	cat <<-END >&2
+	$(basename $0): Create a new directory for a SPECFEMF3D_GLOBE run
+	
+	Usage: $(basename $0) (options) [name]
+	
+	Pre-defined input files:
+	   -Par [Par_file] : Use specified Par_file
+	   -CMT [CMTSOLUTION file] : Use specified CMTSOLUTION file
+	   -STA [STATIONS] : Use specified STATIONS file
+	   
+	Run options [defaults]:
+	   -c [NCHUNKS]  : Number of chunks [$NCHUNKS]
+	   -chunk [lon lat angle] : Set longitude, latitude and angle clockwise
+	                   away from east of first chunk [$CHUNK_LON $CHUNK_LAT $CHUNK_ROT]
+	   -e [NEX]      : Number of spectral elements per side [$NEX]
+	   -m            : Make run for merged mesher and solver [separate]
+	   -n [NPROC]    : Number of processes per side [$NPROC]
+	   -N [jobname]  : Name of job in queue [same as 'name']
+	   -path [dir]   : Location of MPI mesh files [chosen according to machine]
+	   -t [mins]     : Simulation time in minutes [$RUNTIME]
+	   -w [hh:mm:ss] : Walltime [$WALLTIME]
+	
+	Model options [defaults]:
+	   -mod [model]  : Earth model [$MODEL]
+	   -att          : Include effect of attenuation [off]
+	   -ell          : Include effect ellipticity [off]
+	   -grav         : Include effect of graviry [off]
+	   -oceans       : Include effect of oceans [off]
+	   -rot          : Include effect of rotation [off]
+	   -topo         L Include effect of topography [off]
+	END
 	exit 1
 }
 
@@ -128,10 +141,33 @@ cat_Par_file () {
 	git show HEAD:DATA/Par_file || { echo "cat_Par_file: Cannot cat DATA/Par_file" >&2; return 1; }
 }
 
+# Get a default value from the 'defaults' file in the directory above this
+# Accepts one argument: name of variable
+get_default () {
+	[ -f "$DEFAULTS_FILE" ] ||
+		{ echo "get_default: Cannot find defaults file at '$DEFAULTS_FILE'" >&2; exit 1; }
+	local var
+	var=$(grep -e "^\s*$1\s*=" "$DEFAULTS_FILE") ||
+		{ echo "get_default: Cannot find variable '$1' in defaults file '$DEFAULTS_FILE'" >&2; exit 1; }
+	echo "$var" | awk -F'=' '{print $2}' | awk '{print $1}'
+}
+
+################################################################################
+# PATH TO SCRIPT
+SCRIPTPATH="$(cd "$(dirname "$0")"; pwd -P)"
+################################################################################
+# VARIABLES SAVED ON DISK
+DEFAULTS_FILE="$SCRIPTPATH/../defaults"
+
+BUDGET=$(get_default archer_budget) # Budget to charge AUs to on ARCHER
+EMAIL=$(get_default email)          # Email address
+################################################################################
+
 # Get arguments
 [ $# -eq 0 ] && usage
 while [ -n "$1" ]; do
 	case "$1" in
+		# Run options
 		-Par*)  PAR_FILE=$(check_file_exists "$2"); shift 2 ;;
 		-CMT*)  CMTSOLUTION=$(check_file_exists "$2"); shift 2 ;;
 		-STA*)  STATIONS=$(check_file_exists "$2"); shift 2 ;;
@@ -140,12 +176,20 @@ while [ -n "$1" ]; do
 		        CHUNK_ROT=$(check_float $4); check_Par_file "-chunk"; shift 4 ;;
 		-e)     NEX=$(check_int $2); check_Par_file "-e"; shift 2 ;;
 		-m)     MERGED=1; check_Par_file "-m"; shift ;;
-		-mod)   MODEL="$2"; check_Par_file "-mod"; shift 2 ;;
 		-N)     JOBNAME="$2"; shift 2 ;;
 		-n)     NPROC=$(check_int $2); check_Par_file "-n"; shift 2 ;;
 		-path)  LOCAL_PATH=$(check_file "$2"); check_Par_file "-path"; shift 2 ;;
 		-t)     RUNTIME=$(check_float $2); check_Par_file "-t"; shift 2 ;;
 		-w)     WALLTIME=$(process_walltime "$2"); shift 2 ;;
+		# Model options
+		-mod)    MODEL="$2"; check_Par_file "-mod"; shift 2 ;;
+		-att)    ATTENUATION=".true."; shift ;;
+		-ell)    ELLIPTICITY=".true."; shift ;;
+		-grav)   GRAVITY=".true."; shift ;;
+		-oceans) OCEANS=".true."; shift ;;
+		-rot)    ROTATION=".true."; shift ;;
+		-topo)   TOPOGRAPHY=".true."; shift ;;
+		
 		*)      [ $# -ne 1 ] && echo "Unrecognised option \"$1\"" >&2 && usage
 		        NAME=$(check_file "$1"); break ;;
 	esac
@@ -154,7 +198,8 @@ done
 
 
 # Make sure we actually supplied a name, which wouldn't be caught by the above
-[ $# -ne 1 ] && usage
+[ $# -ne 1 ] &&
+	{ echo "$(basename $0): Error: Supply name of run directory as final argument"; exit 1; }
 
 # Jobname is the same as directory name unless otherwise requested.
 [ "$JOBNAME" ] || JOBNAME="$NAME"
@@ -164,7 +209,7 @@ if ! [ -d ../DATA -a \
        -d ../src/specfem3D -a \
        -d ../src/meshfem3D -a \
        -d ../src/shared ]; then
-	{ echo "`basename $0`: Error: Can't find the necessary SPECFEM3D_GLOBE files"
+	{ echo "$(basename $0): Error: Can't find the necessary SPECFEM3D_GLOBE files"
 	  printf "Run this script one level down from a SPECFEM3D_GLOBE "
 	  echo "installation (e.g., in a subdirectory called 'RUNS')"; } > /dev/stderr
 	exit 2
@@ -178,7 +223,7 @@ fi
 
 # Check that this name doesn't already exist
 if [ -d "$NAME" ]; then
-	echo "Directory $NAME already exists.  `basename $0` will not overwrite." >&2
+	echo "Directory $NAME already exists.  $(basename $0) will not overwrite." >&2
 	exit 3
 fi
 
@@ -192,8 +237,22 @@ if [ "$PAR_FILE" ]; then
 	NPROC_ETA=$(get_Par_file_var "$PAR_FILE" NPROC_ETA)
 fi
 
-# Check if merged version being used
-grep -q -- "--enable-merged" ../config.log && MERGED=1 || unset MERGED
+# Check if merged version being used without correct configuration
+if grep -q -- "--enable-merged" ../config.log; then
+	! [ "$MERGED" ] && {
+		echo "***"
+		echo "Warning: Code is configured for merged mesher-solver, but the -m flag not set."
+		echo "Reconfigure the code to allow merged meshing and solving before running \`process.sh\`."
+		echo "***"
+	} >&2
+else
+	[ "$MERGED" ] && {
+		echo "***"
+		echo "Warning: Code is configured for separate mesher and solver, but the -m flag was set."
+		echo "Reconfigure the code to allow merged meshing and solving before running \`process.sh\`."
+		echo "***"
+	} >&2
+fi
 
 # Total number of processes
 nprocs=$((NCHUNKS * NPROC_XI * NPROC_ETA))
@@ -201,12 +260,12 @@ nprocs=$((NCHUNKS * NPROC_XI * NPROC_ETA))
 ##########################
 # Decide whether we're running on Archer or Typhon, or otherwise, and set
 # some strings which depend on this accordingly
-host=`hostname | awk 'BEGIN {h="unknown"}
+host=$(hostname | awk 'BEGIN {h="unknown"}
 						/eslogin/         {h = "archer"}
 						/polaris/         {h = "polaris"}
 						/typhon/ || /t-0/ {h = "typhon"}
 						/bigblue/         {h = "bluecrystal"}
-						END {print h}'`
+					END {print h}')
 if [ "$host" = "archer" ]; then
 	# On ARCHER, we use Cray's aprun command
 	runmesher="aprun -n \$numnodes -N \$N \$PWD/bin/xmeshfem3D"
@@ -215,7 +274,7 @@ if [ "$host" = "archer" ]; then
 	# ARCHER nodes have no disk attached, so use PWD for scratch space
 	[ -z "$LOCAL_PATH" ] && LOCAL_PATH=./DATABASES_MPI
 	PBS_mail_line="#PBS -m ae
-#PBS -M $email
+#PBS -M ${EMAIL}
 #PBS -A ${BUDGET}"
 	procs_per_node=$ppn_archer
 	PBS_procs_line="#PBS -l select=$(( (nprocs + procs_per_node - 1)/procs_per_node ))"
@@ -270,7 +329,7 @@ else
 	# Default: N-S-striking thrust fault, dip 45 deg, Mw 7 at (lon,lat) = (0,0)
 	cat <<-END > "$NAME"/DATA/CMTSOLUTION
 	PDE 2000  1  1  0  0  0.00   0.0000    0.0000 100.0 7.0 7.0 NPOLE
-	event name:     NPOLE
+	event name:     EXAMPLE
 	time shift:      0.0000
 	half duration:   0.0000
 	latitude:        0.0000
@@ -300,7 +359,7 @@ else
 fi
 
 # Use absorbing conditions unless using the whole Earth
-[ $NCHUNKS -eq 1 -o $NCHUNKS -eq 2 ] && absorb=".true." || absorb=".false."
+[ $NCHUNKS -eq 1 -o $NCHUNKS -eq 2 ] && ABSORBING_CONDITIONS=".true." || ABSORBING_CONDITIONS=".false."
 
 # Par_file
 if [ "${PAR_FILE}" ]; then
@@ -310,23 +369,42 @@ else
 	### NOTE: This defines a 'unique' directory for the meshfiles if we're running ###
 	### on Typhon or another machine that's not Hector.  Be careful.               ###
 	{ cat_Par_file || exit 1; } | awk '
+	# Write a SPECFEM3D_GLOBE Par_file line that begins with name, setting its value to var,
+	# and replacing the line that exists in the file
 	function rep(name, var,   r) {
-		r = "^ *"name" *="
-		if ($0 ~ r) {printf("%-32s= %s\n", $1, var); return 1}
+		r = "^\s*"name" *="
+		if ($0 ~ r) {
+			printf("%-32s= %s\n", $1, var)
+			# print "Replacing",name,"with",var > "/dev/stderr"
+			return 1
+		}
 		return 0
 	}
 	{
-		if (rep("NCHUNKS", "'"$NCHUNKS"'")) next
-		if (rep("NEX_XI", "'"$NEX_XI"'")) next
-		if (rep("NEX_ETA", "'"$NEX_ETA"'")) next
-		if (rep("NPROC_XI", "'"$NPROC_XI"'")) next
-		if (rep("NPROC_ETA", "'"$NPROC_ETA"'")) next
-		if (rep("ANGULAR_WIDTH_XI_IN_DEGREES", "'"$CHUNK_WIDTH"'"))
-		if (rep("ANGULAR_WIDTH_ETA_IN_DEGREES", "'"$CHUNK_WIDTH"'"))
-		if (rep("MODEL", "'"$MODEL"'")) next
-		if (rep("ABSORBING_CONDITIONS", "'"$ABSORBING_CONDITIONS"'")) next
-		if (rep("RECORD_LENGTH_IN_MINUTES", "'"$RECORD_LENGTH"'")) next
-		if (rep("LOCAL_PATH", "'"$LOCAL_PATH"'")) next
+		# Run options
+		if (rep("NCHUNKS", "'"$NCHUNKS"'") ||
+		    rep("NEX_XI", "'"$NEX"'") ||
+		    rep("NEX_ETA", "'"$NEX"'") ||
+		    rep("NPROC_XI", "'"$NPROC_XI"'") ||
+		    rep("NPROC_ETA", "'"$NPROC_ETA"'") ||
+		    rep("ANGULAR_WIDTH_XI_IN_DEGREES", "'"$CHUNK_WIDTH"'") ||
+		    rep("ANGULAR_WIDTH_ETA_IN_DEGREES", "'"$CHUNK_WIDTH"'") ||
+		    rep("CENTER_LATITUDE_IN_DEGREES", "'"$CHUNK_LAT"'") ||
+		    rep("CENTER_LONGITUDE_IN_DEGREES", "'"$CHUNK_LON"'") ||
+		    rep("ABSORBING_CONDITIONS", "'"$ABSORBING_CONDITIONS"'") ||
+		    rep("RECORD_LENGTH_IN_MINUTES", "'"$RUNTIME"'") ||
+		    rep("LOCAL_PATH", "'"$LOCAL_PATH"'") ||
+		# Model options
+		    rep("MODEL", "'"$MODEL"'") ||
+		    rep("ATTENUATION", "'"$ATTENUATION"'") ||
+		    rep("ELLIPTICITY", "'"$ELLIPTICITY"'") ||
+		    rep("GRAVITY", "'"$GRAVITY"'") ||
+		    rep("OCEANS", "'"$OCEANS"'") ||
+		    rep("ROTATION", "'"$ROTATION"'") ||
+		    rep("TOPOGRAPHY", "'"$TOPOGRAPHY"'")) {
+			next
+		}
+		
 		print
 	}
 	' > "$NAME"/DATA/Par_file
@@ -337,11 +415,11 @@ fi
 if [ $MERGED ]; then
 	required_binaries="bin/xcreate_header_file bin/xspecfem3D"
 	make_clean="make clean"
-	make="make merged"
+	make="make xspecfem3D"
 else
 	required_binaries="bin/xcreate_header_file bin/xmeshfem3D bin/xspecfem3D"
 	make_clean="make clean"
-	make="make"
+	make="make xmeshfem3D xspecfem3D"
 fi
 
 cat <<END > "$NAME"/process.sh
@@ -355,7 +433,7 @@ if [ \$# -ne 0 ]; then
    nosub=1
 fi
 
-currentdir=\`pwd\`
+currentdir=\$(pwd)
 
 # sets up directory structure in current directoy
 echo -n "   Removing previous output... "
@@ -375,6 +453,14 @@ while [ \$i -le 5 ]; do
 
 		cp DATA/Par_file ../../DATA/
 		cd ../..
+		
+		echo -n "   Saving code status... "
+		git rev-parse --is-inside-work-tree >/dev/null 2>&1 &&
+		    { git show
+			  git diff -- . ':(exclude)DATA/Par_file' ':(exclude)DATA/CMTSOLUTION' ':(exclude)DATA/STATIONS'
+		    } > \$currentdir/commit
+		echo "done"
+		
 		echo -n "   Compiling in root directory... "
 		{ ${make_clean} >/dev/null &&
 		  ${make}; } &> \$currentdir/make.log ||
@@ -383,7 +469,7 @@ while [ \$i -le 5 ]; do
 		# Copy executables into working directory
 		cp ${required_binaries} \$currentdir/bin/
 
-		# backup of constants setup
+		# Backup of constants setup
 		cp setup/* \$currentdir/OUTPUT_FILES/
 
 		# Delete lock file and remove interrupt trap
@@ -397,13 +483,13 @@ while [ \$i -le 5 ]; do
 		# submits job to run mesher & solver, unless we've requested otherwise
 		if [ -z "\$nosub" ]; then
 		   echo -n "   Submitting script... "
-		   first=\`qsub go_mesher_solver_pbs.bash\`
-		   echo "job: \$first"
+		   jobid=\$(qsub "$JOB_SCRIPT")
+		   echo "job: \$jobid"
 
 		   echo -n "All done:  "
-		   echo \`date\`
+		   echo \$(date)
 		else
-           echo "Job not submitted.  Use \"qsub go_mesher_solver_pbs.bash\" to run job."
+           echo "Job not submitted.  Use \"qsub $JOB_SCRIPT\" to run job."
 		fi
 
 		exit 0
@@ -427,7 +513,7 @@ chmod +x "$NAME"/process.sh
 
 #################################################################################
 # Make default PBS job script
-cat <<END > "$NAME"/go_mesher_solver_pbs.bash
+cat <<END > "$NAME/$JOB_SCRIPT"
 #!/bin/bash
 #PBS -S /bin/bash
 #PBS -N $JOBNAME
@@ -439,35 +525,33 @@ ${PBS_procs_line}
 
 ###########################################################
 
-cd \$PBS_O_WORKDIR
+# Change to directory of script
+cd "\$PBS_O_WORKDIR"
 
-BASEMPIDIR=\`grep LOCAL_PATH DATA/Par_file | cut -d = -f 2 \`
+# Temporary mesh file location
+BASEMPIDIR=\$(awk '/^ *LOCAL_PATH *=/{print \$3}' DATA/Par_file)
 
-# script to run the mesher and the solver
-# read DATA/Par_file to get information about the run
-# compute total number of nodes needed
-NPROC_XI=\`grep NPROC_XI DATA/Par_file | cut -d = -f 2 \`
-NPROC_ETA=\`grep NPROC_ETA DATA/Par_file | cut -d = -f 2\`
-NCHUNKS=\`grep NCHUNKS DATA/Par_file | cut -d = -f 2 \`
-
-# total number of nodes is the product of the values read
-numnodes=\$(( \$NCHUNKS * \$NPROC_XI * \$NPROC_ETA ))
+# Compute number of nodes from Par_file
+NPROC_XI=\$(awk '/^ *NPROC_XI *=/{print \$3}' DATA/Par_file)
+NPROC_ETA=\$(awk '/^ *NPROC_ETA *=/{print \$3}' DATA/Par_file)
+NCHUNKS=\$(awk '/^ *NCHUNKS *=/{print \$3}' DATA/Par_file)
+numnodes=\$((\$NCHUNKS * \$NPROC_XI * \$NPROC_ETA))
 
 mkdir -p OUTPUT_FILES
 
-# backup files used for this simulation
+# Backup files used for this simulation
 cp DATA/Par_file OUTPUT_FILES/
 cp DATA/STATIONS OUTPUT_FILES/
 cp DATA/CMTSOLUTION OUTPUT_FILES/
 
-# obtain job information
+# Save node information
 cat \$PBS_NODEFILE > OUTPUT_FILES/compute_nodes
 echo "\$PBS_JOBID" > OUTPUT_FILES/jobid
 
 END
 
 if [[ $host != hector && $host != archer ]]; then  # Create the machinefile if running on Typhon
-	cat <<-END >> "$NAME"/go_mesher_solver_pbs.bash
+	cat <<-END >> "$NAME/$JOB_SCRIPT"
 	# Set up machine files
 	export nodes=\`cat \$PBS_NODEFILE\`
 	export nnodes=\`cat \$PBS_NODEFILE | wc -l\`
@@ -490,50 +574,43 @@ if [[ $host != hector && $host != archer ]]; then  # Create the machinefile if r
 
 	END
 else  # Automatically calculate mppnppn for HECToR
-	cat <<-END >> "$NAME"/go_mesher_solver_pbs.bash
+	cat <<-END >> "$NAME/$JOB_SCRIPT"
 	# Setup BASEMPIDIR
 	mkdir -p \$BASEMPIDIR
 
 	# Processors per node must be \$numnodes if less than ${procs_per_node}
-	N=\`echo \$numnodes | awk '{if(\$1<${procs_per_node}) print \$1; else print ${procs_per_node}}'\`
+	N=\$(echo \$numnodes | awk '{if(\$1<${procs_per_node}) print \$1; else print ${procs_per_node}}')
 
 	END
 fi
 
 if [ $MERGED ]; then
-	cat <<-END >> "$NAME"/go_mesher_solver_pbs.bash
+	cat <<-END >> "$NAME/$JOB_SCRIPT"
 	##
-	## merged mesh generation and solving
+	## Run merged mesher and solver
 	##
 	sleep 2
-	echo "\`date\`: starting merged mesher and solver on \$numnodes processors"
+	echo "\$(date): starting merged mesher and solver on \$numnodes processors"
 	echo
 	
-	$runmeshersolver
-	
-	echo "\`date\`: mesher and solver done"
-	echo
+	$runmeshersolver &&
+	    echo "\$(date): mesher and solver done" ||
+	    echo "\$(date): FAILED"
 	
 	END
 else
-	cat <<-END >> "$NAME"/go_mesher_solver_pbs.bash
+	cat <<-END >> "$NAME/$JOB_SCRIPT"
 	##
 	## mesh generation
 	##
 	sleep 2
 
 	echo
-	echo "\`date\`: starting MPI mesher on \$numnodes processors"
-	echo
+	echo "\$(date): starting mesher on \$numnodes processors"
 
-	$runmesher
-
-	echo "\`date\`: mesher done"
-	echo
-
-	# backup important files addressing.txt and list*.txt
-	cp OUTPUT_FILES/*.txt \$BASEMPIDIR/
-
+	$runmesher &&
+	    echo "\$(date): mesher done" ||
+	    echo "\$(date): MESHER FAILED"
 
 	##
 	## forward simulation
@@ -541,31 +618,31 @@ else
 	sleep 20
 
 	echo
-	echo "\`date\`: starting solver"
-	echo
+	echo "\$(date): starting solver"
 
-	$runsolver
+	$runsolver &&
+	    echo "\$(date): solver done" ||
+	    echo "\$(date): SOLVER FAILED"
 
-	echo "\`date\`: solver done"
 	echo
 
 	END
 fi
 
 if [[ $host != hector && $host != archer ]]; then # Remove local mesh files from nodes
-	cat <<-END >> "$NAME"/go_mesher_solver_pbs.bash
+	cat <<-END >> "$NAME/$JOB_SCRIPT"
 	# Clear out mesh files on local nodes
 	if [[ "\${BASEMPIDIR:0:1}" == "/" ]]; then
 	   # How much room did the meshfiles use up?
 	   echo -n "Mesh files took up "
-	   for n in \`sort -u < \$PBS_NODEFILE\`; do
+	   for n in \$(sort -u < \$PBS_NODEFILE); do
 	      echo "node \$n"
 	      ssh \$n "du -ks \$BASEMPIDIR 2>/dev/null" 2>/dev/null
 	   done | awk '\$1!="node"{s+=\$1}END{printf("%0.3f GB\n",s/1024^2)}'
 
 	   # Remove the mesh files
 	   echo -n "Removing mesh files from nodes...  "
-	   for n in \`sort -u < \$PBS_NODEFILE\`; do
+	   for n in \$(sort -u < \$PBS_NODEFILE); do
 	      ssh \$n "rm -rf \$BASEMPIDIR" 2>/dev/null ||\\
 	         { echo -e "\nFailed to remove mesh files from directories local to nodes" ; exit 1 ; }
 	   done && echo "Done"
@@ -578,12 +655,14 @@ if [[ $host != hector && $host != archer ]]; then # Remove local mesh files from
 fi
 
 if [[ $host == hector || $host == archer ]]; then  # Remove DATABASES_MPI in the run as it takes so long
-	cat <<-END >> "$NAME"/go_mesher_solver_pbs.bash
+	cat <<-END >> "$NAME/$JOB_SCRIPT"
 	# Remove database files
-	GBused=\`du -cks \$BASEMPIDIR/proc000000* | tail -n 1 | awk -v n=\$numnodes '{print \$1*n/1024^2}'\`
+	GBused=\$(du -cks \$BASEMPIDIR/proc000000* | tail -n 1 | awk -v n=\$numnodes '{print \$1*n/1024^2}')
 	echo "Mesh files took up \$GBused GB"
 	echo -n "Removing mesh files from workspace...  "
-	rm -r \$BASEMPIDIR && echo "Done" || echo "Failed to remove mesh files"
+	rm -r \$BASEMPIDIR &&
+	    echo "Done" ||
+	    echo "Failed to remove mesh files"
 
 	echo "Finished"
 	exit 0
@@ -593,4 +672,4 @@ fi
 
 
 # Make this file executable
-chmod +x "$NAME"/go_mesher_solver_pbs.bash
+chmod +x "$NAME/$JOB_SCRIPT"
